@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MarkDown</title>
+</head>
+
+<body>
+<textarea id="story" name="story" rows="5" cols="33">
+Once upon a time…
+</textarea>
+
+<script>
+    // Create WebSocket connection.
+    const socket = new WebSocket('ws://localhost:8080/socket');
+
+
+    // Connection opened
+    socket.addEventListener('open', function (event) {
+
+        document.getElementById("story").addEventListener("input", function (event) {
+            console.log(event.target.value);
+            socket.send(event.target.value);
+        });
+    });
+
+    // Listen for messages
+    socket.addEventListener('message', function (event) {
+        document.getElementById("story").value = event.data
+        console.log('Message from server ', event.data);
+    });
+
+</script>
+
+</body>
+
+</html>
+
