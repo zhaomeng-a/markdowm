@@ -3,10 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <title>MarkDown</title>
+    <style type="text/css">
+        body {
+            background-color: lightyellow
+        }
+
+        p {
+            color: #9090cb
+        }
+    </style>
 </head>
 
 <body>
-<textarea id="story" name="story" rows="5" cols="33">
+<h2>多人共享编辑</h2>
+
+<textarea id="story" name="story" rows="30" cols="100">
 Once upon a time…
 </textarea>
 
@@ -14,19 +25,20 @@ Once upon a time…
     // Create WebSocket connection.
     const socket = new WebSocket('ws://localhost:8080/socket');
 
-
     // Connection opened
     socket.addEventListener('open', function (event) {
-
         document.getElementById("story").addEventListener("input", function (event) {
-            console.log(event.target.value);
             socket.send(event.target.value);
+
+            console.log(event.target.value);
+
         });
     });
 
     // Listen for messages
     socket.addEventListener('message', function (event) {
-        document.getElementById("story").value = event.data
+        document.getElementById("story").value = event.data;
+
         console.log('Message from server ', event.data);
     });
 

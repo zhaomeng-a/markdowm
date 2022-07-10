@@ -2,25 +2,29 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"log"
 	"markdown/utils/config"
 	"markdown/utils/redis"
+	"math/rand"
 	"net/http"
 	"os"
+	"time"
 )
 
 var conns = make(map[string]*websocket.Conn)
 var upgrader = websocket.Upgrader{} // use default options
+var letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 /*
 TODO:
-1、线程不安全，存在多个全局变量【Doing】
-2、需要支持多页面，目前只有 1 个页面
+1、线程不安全，存在多个全局变量【DONE】
+2、需要支持多页面，目前只有 1 个页面【Doing】
 3、每次返回全量文本，开销比较大，需要实现一些 diff 算法
 4、数据要持久存储，目前存在变量里，进程重启会丢失【DONE】
 5、解决多人编辑的冲突问题
-6、改一下前端 UI,有点儿丑
+6、改一下前端 UI,有点儿丑 【DONE】
 7、数据库配置放入 config 文件【DONE】
 */
 
@@ -37,7 +41,7 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 	}()
 
-	// 从 redis get 最后一次的文本信息，返给新建立的连接
+	// 从 redis get 数据，返给新建立的连接
 	ctx := context.Background()
 	lastMessage, err := redis.NewClient().Get(ctx, "lastMessage").Result()
 	if err != nil {
@@ -77,6 +81,9 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
+	newUrl := fmt.Sprintf("/" + RandStringBytes(10))
+	http.Redirect(w, r, newUrl, http.StatusSeeOther)
+
 	body, err := os.ReadFile("statics/index.html")
 	if err != nil {
 		panic(err)
@@ -84,13 +91,22 @@ func home(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
+func RandStringBytes(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
+}
+
 func init() {
 	config.LoadConfig()
+	rand.Seed(time.Now().UnixNano())
 }
 
 func main() {
 	http.HandleFunc("/socket", socketHandler)
 	http.HandleFunc("/", home)
-	//http.HandleFunc("/:room_id", home)
+	http.HandleFunc("/:room_id", home)
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
