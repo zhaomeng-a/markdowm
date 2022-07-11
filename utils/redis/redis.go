@@ -6,6 +6,8 @@ import (
 	"markdown/utils/config"
 )
 
+type Pool = redis.Client
+
 func NewClient() *redis.Client {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.GC.Redis.Host, config.GC.Redis.Port),
