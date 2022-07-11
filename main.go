@@ -7,12 +7,17 @@ import (
 	"log"
 	"markdown/utils/config"
 	"markdown/utils/redis"
+	"markdown/utils/router"
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"time"
 )
 
+var mu sync.Mutex
+var redisPool *redis.Pool
 var conns = make(map[string]*websocket.Conn)
 var upgrader = websocket.Upgrader{} // use default options
 var letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -35,15 +40,26 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 		log.Print("Error during connection upgradation:", err)
 		return
 	}
+
+	roomId := strings.Split(r.RequestURI, "/")[2]
+	fmt.Println(roomId)
+
+	mu.Lock()
 	conns[conn.RemoteAddr().String()] = conn
+	mu.Unlock()
+
 	defer func() {
+		mu.Lock()
 		delete(conns, conn.RemoteAddr().String())
+		mu.Unlock()
 		conn.Close()
 	}()
 
 	// 从 redis get 数据，返给新建立的连接
-	ctx := context.Background()
-	lastMessage, err := redis.NewClient().Get(ctx, "lastMessage").Result()
+	lastMessage, err := redisPool.Get(r.Context(), roomId).Result()
+	if err == context.Canceled {
+		return
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +80,10 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Received: %s", message)
 
 		//数据写入 redis
-		err = redis.NewClient().Set(ctx, "lastMessage", message, 0).Err()
+		err = redisPool.Set(r.Context(), roomId, message, 0).Err()
+		if err == context.Canceled {
+			return
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -82,8 +101,10 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 
 func home(w http.ResponseWriter, r *http.Request) {
 	newUrl := fmt.Sprintf("/" + RandStringBytes(10))
-	http.Redirect(w, r, newUrl, http.StatusSeeOther)
+	http.Redirect(w, r, newUrl, http.StatusFound)
+}
 
+func room(w http.ResponseWriter, r *http.Request) {
 	body, err := os.ReadFile("statics/index.html")
 	if err != nil {
 		panic(err)
@@ -102,11 +123,18 @@ func RandStringBytes(n int) string {
 func init() {
 	config.LoadConfig()
 	rand.Seed(time.Now().UnixNano())
+	redisPool = redis.NewClient()
 }
 
 func main() {
-	http.HandleFunc("/socket", socketHandler)
-	http.HandleFunc("/", home)
-	http.HandleFunc("/:room_id", home)
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	router := router.New()
+	//http.HandleFunc("/socket", socketHandler)
+	//http.HandleFunc("/", home)
+	//http.HandleFunc("/:room_id", room)
+
+	router.Handle("/socket/:room_id", socketHandler)
+	router.Handle("/", home)
+	router.Handle("/:room_id", room)
+
+	log.Fatal(http.ListenAndServe("localhost:8080", router))
 }
