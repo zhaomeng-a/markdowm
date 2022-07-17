@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	redis2 "github.com/go-redis/redis/v9"
 	"github.com/gorilla/websocket"
 	"log"
 	"markdown/utils/config"
@@ -18,14 +19,14 @@ import (
 
 var mu sync.Mutex
 var redisPool *redis.Pool
-var conns = make(map[string]*websocket.Conn)
+var conns = make(map[string]map[string]*websocket.Conn)
 var upgrader = websocket.Upgrader{} // use default options
 var letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 /*
 TODO:
 1、线程不安全，存在多个全局变量【DONE】
-2、需要支持多页面，目前只有 1 个页面【Doing】
+2、需要支持多页面，目前只有 1 个页面【DONE】
 3、每次返回全量文本，开销比较大，需要实现一些 diff 算法
 4、数据要持久存储，目前存在变量里，进程重启会丢失【DONE】
 5、解决多人编辑的冲突问题
@@ -34,23 +35,39 @@ TODO:
 */
 
 func socketHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("r exit --------------")
+	websocketUpgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		// 解决跨域问题
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
 	// Upgrade our raw HTTP connection to a websocket based one
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := websocketUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("Error during connection upgradation:", err)
 		return
 	}
 
 	roomId := strings.Split(r.RequestURI, "/")[2]
-	fmt.Println(roomId)
 
 	mu.Lock()
-	conns[conn.RemoteAddr().String()] = conn
+	if _, ok := conns[roomId]; !ok {
+		roomConn := make(map[string]*websocket.Conn)
+		conns[roomId] = roomConn
+	} else {
+		conns[roomId][conn.RemoteAddr().String()] = conn
+	}
+
 	mu.Unlock()
 
 	defer func() {
 		mu.Lock()
-		delete(conns, conn.RemoteAddr().String())
+		delete(conns[roomId], conn.RemoteAddr().String())
+		//delete(conns, conns[roomId][conn.RemoteAddr().String()])
 		mu.Unlock()
 		conn.Close()
 	}()
@@ -60,7 +77,10 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 	if err == context.Canceled {
 		return
 	}
-	if err != nil {
+	if lastMessage == "" {
+		lastMessage = "123"
+	}
+	if err != nil && err != redis2.Nil {
 		panic(err)
 	}
 
@@ -73,7 +93,13 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		messageType, message, err := conn.ReadMessage()
+
 		if err != nil {
+			if ok := strings.Contains(err.Error(), "close 1001"); ok{
+				conn.Close()
+				return
+			}
+
 			log.Println("Error during message reading:", err)
 			break
 		}
@@ -89,7 +115,7 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		//将上一次的文本信息，循环写给所有的连接
-		for _, c := range conns {
+		for _, c := range conns[roomId] {
 			err = c.WriteMessage(messageType, message)
 			if err != nil {
 				log.Println("Error during message writing:", err)

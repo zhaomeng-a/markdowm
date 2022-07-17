@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 )
@@ -16,6 +17,7 @@ func (router *Router) Handle(pattern string, handler func(http.ResponseWriter, *
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for pattern, handler := range router.routes {
 		if match(pattern, r.URL.Path) {
+			fmt.Println("pattern", pattern, "r", r.URL.Path)
 			handler(w, r)
 		}
 	}
