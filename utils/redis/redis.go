@@ -8,6 +8,8 @@ import (
 
 type Pool = redis.Client
 
+var Nil = redis.Nil
+
 func NewClient() *redis.Client {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.GC.Redis.Host, config.GC.Redis.Port),

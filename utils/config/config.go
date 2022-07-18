@@ -19,7 +19,7 @@ type Config struct {
 }
 
 func LoadConfig() {
-	viper.AddConfigPath("/Users/zhaomeng/Github/markdown/config")
+	viper.AddConfigPath("/Users/zhaomeng/GolangProject/markdown/config")
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 

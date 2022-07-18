@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	redis2 "github.com/go-redis/redis/v9"
 	"github.com/gorilla/websocket"
 	"log"
 	"markdown/utils/config"
@@ -35,7 +34,6 @@ TODO:
 */
 
 func socketHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("r exit --------------")
 	websocketUpgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -67,24 +65,31 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		mu.Lock()
 		delete(conns[roomId], conn.RemoteAddr().String())
-		//delete(conns, conns[roomId][conn.RemoteAddr().String()])
 		mu.Unlock()
 		conn.Close()
 	}()
 
 	// 从 redis get 数据，返给新建立的连接
 	lastMessage, err := redisPool.Get(r.Context(), roomId).Result()
-	if err == context.Canceled {
-		return
+	if err == redis.Nil {
+		err = nil
 	}
-	if lastMessage == "" {
-		lastMessage = "123"
-	}
-	if err != nil && err != redis2.Nil {
+	if err != nil {
 		panic(err)
 	}
 
-	log.Println("lastMessage:", lastMessage)
+	//log.Println("lastMessage:", roomId, lastMessage)
+	//
+	//messageType, curMessage, err := conn.ReadMessage()
+	//
+	//if err != nil {
+	//	log.Println("Error during message reading:", err)
+	//	return
+	//}
+	//log.Printf("Received: %s", curMessage)
+	//
+	//
+	//diff.TextDiff(lastMessage,curMessage,false)
 
 	err = conn.WriteMessage(websocket.TextMessage, []byte(lastMessage))
 	if err != nil {
@@ -95,11 +100,6 @@ func socketHandler(w http.ResponseWriter, r *http.Request) {
 		messageType, message, err := conn.ReadMessage()
 
 		if err != nil {
-			if ok := strings.Contains(err.Error(), "close 1001"); ok{
-				conn.Close()
-				return
-			}
-
 			log.Println("Error during message reading:", err)
 			break
 		}
@@ -154,10 +154,6 @@ func init() {
 
 func main() {
 	router := router.New()
-	//http.HandleFunc("/socket", socketHandler)
-	//http.HandleFunc("/", home)
-	//http.HandleFunc("/:room_id", room)
-
 	router.Handle("/socket/:room_id", socketHandler)
 	router.Handle("/", home)
 	router.Handle("/:room_id", room)
